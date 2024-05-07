@@ -35,8 +35,7 @@ helmCharts:
       - patches/patch-serviceaccount.yaml
   - name: tempo-distributed
     repo: "https://grafana.github.io/helm-charts"
-    #IRSA Issue
-    version: "1.6.4"
+    version: "^1.9.7"
     releaseName: tempo
     namespace: monitoring
     includeCRDs: true
