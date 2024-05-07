@@ -64,12 +64,12 @@ patches:
   - target:
       kind: StatefulSet
       name: .*
-    path: patches/patch-statefulset.yaml
+    path: ../../base/patches/patch-statefulset.yaml
   - target:
       kind: Deployment
       name: .*
-    path: patches/patch-deployment.yaml
+    path: ../../base/patches/patch-deployment.yaml
   - target:
       kind: DaemonSet
       name: .*
-    path: patches/patch-daemonset.yaml
+    path: ../../base/patches/patch-daemonset.yaml
