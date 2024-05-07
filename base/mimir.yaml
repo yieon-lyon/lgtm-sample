@@ -1,0 +1,124 @@
+# (Optional) https://grafana.com/docs/mimir/latest/references/architecture/components/alertmanager/
+alertmanager:
+  enabled: false
+  persistentVolume:
+    enabled: true
+  replicas: 2
+  statefulSet:
+    enabled: true
+
+# https://grafana.com/docs/mimir/latest/references/architecture/components/compactor/
+compactor:
+  persistentVolume:
+    size: 20Gi
+
+# https://grafana.com/docs/mimir/latest/references/architecture/components/distributor/
+distributor:
+  replicas: 2
+
+# https://grafana.com/docs/mimir/latest/references/architecture/components/ingester/
+ingester:
+  persistentVolume:
+    size: 50Gi
+  replicas: 3
+  topologySpreadConstraints: {}
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: target # support for enterprise.legacyLabels
+                operator: In
+                values:
+                  - ingester
+          topologyKey: 'kubernetes.io/hostname'
+        - labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - ingester
+          topologyKey: 'kubernetes.io/hostname'
+  zoneAwareReplication:
+    topologyKey: 'kubernetes.io/hostname'
+
+chunks-cache:
+  enabled: true
+  replicas: 2
+index-cache:
+  enabled: true
+  replicas: 3
+metadata-cache:
+  enabled: true
+results-cache:
+  enabled: true
+minio:
+  enabled: false
+
+# (Optional) https://grafana.com/docs/mimir/latest/references/architecture/components/overrides-exporter/
+overrides_exporter:
+  enabled: false
+  replicas: 1
+
+# https://grafana.com/docs/mimir/latest/references/architecture/components/querier/
+querier:
+  replicas: 1
+
+# (Optional) https://grafana.com/docs/mimir/latest/references/architecture/components/query-scheduler/
+query_scheduler:
+  replicas: 2
+
+# https://grafana.com/docs/mimir/latest/references/architecture/components/query-frontend/
+query_frontend:
+  replicas: 1
+
+# (Optional) https://grafana.com/docs/mimir/latest/references/architecture/components/ruler/
+ruler:
+  enabled: false
+  replicas: 1
+
+# https://grafana.com/docs/mimir/latest/references/architecture/components/store-gateway/
+store_gateway:
+  persistentVolume:
+    size: 10Gi
+  replicas: 3
+  topologySpreadConstraints: {}
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: target # support for enterprise.legacyLabels
+                operator: In
+                values:
+                  - store-gateway
+          topologyKey: 'kubernetes.io/hostname'
+        - labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - store-gateway
+          topologyKey: 'kubernetes.io/hostname'
+  zoneAwareReplication:
+    topologyKey: 'kubernetes.io/hostname'
+
+# https://github.com/grafana/rollout-operator
+# https://grafana.com/docs/mimir/latest/configure/configure-zone-aware-replication/
+rollout_operator:
+  enabled: true
+
+# -- DEPRECATED: use the 'gateway' section instead. For a migration guide refer to
+# https://grafana.com/docs/helm-charts/mimir-distributed/latest/migration-guides/migrate-to-unified-proxy-deployment/
+#
+# Configuration for nginx gateway.
+# Can only be enabled when 'enterprise.enabled' is false.
+nginx:
+  replicas: 1
+  resources:
+    limits:
+      cpu: 1.4
+      memory: 731Mi
+    requests:
+      cpu: 1.4
+      memory: 731Mi

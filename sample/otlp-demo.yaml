@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otlp-demo
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: otlp-demo
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: otlp-demo
+    spec:
+      containers:
+        - name: otlp-demo
+          image: yieon/otlp-demo
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "opentelemetry-collector.monitoring.svc.cluster.local:4317"
+            - name: APP_NAME
+              value: otlp-demo
+            - name: DEMO_SERVER_ENDPOINT
+              value: "http://otlp-demo-server.default.svc.cluster.local:7080/hello"
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: cicd
+        kubernetes.io/arch: arm64
+      tolerations:
+        - key: system-type
+          operator: Equal
+          effect: NoSchedule
+          value: cicd
+        - key: arch-type
+          operator: Equal
+          effect: NoSchedule
+          value: arm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otlp-demo-server
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: otlp-demo-server
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: otlp-demo-server
+    spec:
+      containers:
+        - name: otlp-demo-server
+          image: yieon/otlp-demo-server
+          ports:
+            - containerPort: 7080
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "opentelemetry-collector.monitoring.svc.cluster.local:4317"
+            - name: APP_NAME
+              value: otlp-demo-server
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: cicd
+        kubernetes.io/arch: arm64
+      tolerations:
+        - key: system-type
+          operator: Equal
+          effect: NoSchedule
+          value: cicd
+        - key: arch-type
+          operator: Equal
+          effect: NoSchedule
+          value: arm
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otlp-demo-server
+  namespace: default
+spec:
+  selector:
+    app: otlp-demo-server
+  ports:
+    - protocol: TCP
+      port: 7080
+      targetPort: 7080
+      name: http

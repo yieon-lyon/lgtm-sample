@@ -1,0 +1,76 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: monitoring
+
+helmCharts:
+  - name: grafana
+    repo: "https://grafana.github.io/helm-charts"
+    version: "^7.3.9"
+    releaseName: grafana
+    namespace: monitoring
+    includeCRDs: true
+    valuesFile: ../../base/grafana.yaml
+    additionalValuesFiles:
+      - patches/patch-grafana.yaml
+  - name: loki
+    repo: "https://grafana.github.io/helm-charts"
+    version: "^6.3.4"
+    releaseName: loki
+    namespace: monitoring
+    includeCRDs: true
+    valuesFile: ../../base/loki.yaml
+    additionalValuesFiles:
+      - patches/patch-loki.yaml
+      - patches/patch-serviceaccount.yaml
+  - name: mimir-distributed
+    repo: "https://grafana.github.io/helm-charts"
+    version: "^5.3.0"
+    releaseName: mimir
+    namespace: monitoring
+    includeCRDs: true
+    valuesFile: ../../base/mimir.yaml
+    additionalValuesFiles:
+      - patches/patch-mimir.yaml
+      - patches/patch-serviceaccount.yaml
+  - name: tempo-distributed
+    repo: "https://grafana.github.io/helm-charts"
+    #IRSA Issue
+    version: "1.6.4"
+    releaseName: tempo
+    namespace: monitoring
+    includeCRDs: true
+    valuesFile: ../../base/tempo.yaml
+    additionalValuesFiles:
+      - patches/patch-tempo.yaml
+      - patches/patch-serviceaccount.yaml
+
+  - name: opentelemetry-operator
+    repo: "https://open-telemetry.github.io/opentelemetry-helm-charts"
+    version: "^0.56.0"
+    releaseName: opentelemetry-operator
+    namespace: monitoring
+    includeCRDs: true
+    valuesFile: ../../base/opentelemetry-operator.yaml
+  - name: opentelemetry-collector
+    repo: "https://open-telemetry.github.io/opentelemetry-helm-charts"
+    version: "^0.90.1"
+    releaseName: opentelemetry-collector
+    namespace: monitoring
+    includeCRDs: true
+    valuesFile: ../../base/opentelemetry-collector.yaml
+
+patches:
+  #Taints, NodeSelector
+  - target:
+      kind: StatefulSet
+      name: .*
+    path: patches/patch-statefulset.yaml
+  - target:
+      kind: Deployment
+      name: .*
+    path: patches/patch-deployment.yaml
+  - target:
+      kind: DaemonSet
+      name: .*
+    path: patches/patch-daemonset.yaml

@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: .*
+spec:
+  template:
+    spec:
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: monitoring
+        kubernetes.io/arch: arm64
+      tolerations:
+        - key: system-type
+          operator: Equal
+          value: monitoring
+          effect: NoSchedule
+        - key: arch-type
+          operator: Equal
+          value: arm
+          effect: NoSchedule

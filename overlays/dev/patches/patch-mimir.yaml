@@ -1,0 +1,22 @@
+mimir:
+  structuredConfig:
+    limits:
+      max_label_names_per_series: 100
+      max_global_series_per_user: 1000000
+      ingestion_rate: 100000
+      ingestion_burst_size: 5000000
+    blocks_storage:
+      s3:
+        bucket_name: mimir-blocks-dev
+        endpoint: s3.ap-northeast-2.amazonaws.com
+        region: ap-northeast-2
+#    alertmanager_storage:
+#      s3:
+#        bucket_name: mimir-alertmanager-dev
+#        endpoint: s3.ap-northeast-2.amazonaws.com
+#        region: ap-northeast-2
+#    ruler_storage:
+#      s3:
+#        bucket_name: mimir-ruler-dev
+#        endpoint: s3.ap-northeast-2.amazonaws.com
+#        region: ap-northeast-2

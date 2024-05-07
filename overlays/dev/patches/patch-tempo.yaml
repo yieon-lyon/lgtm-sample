@@ -1,0 +1,6 @@
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: tempo-dev
+      endpoint: s3.ap-northeast-2.amazonaws.com

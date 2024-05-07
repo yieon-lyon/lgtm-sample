@@ -1,0 +1,9 @@
+loki:
+  storage:
+    bucketNames:
+      chunks: loki-logs-dev
+      ruler: loki-logs-dev
+      admin: loki-logs-dev
+    type: s3
+    s3:
+      region: ap-northeast-2

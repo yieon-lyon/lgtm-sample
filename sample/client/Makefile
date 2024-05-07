@@ -1,0 +1,226 @@
+# In order to ensure make instructions fail if there is command that fails a pipe (ie: `go test ... | tee -a ./test_results.txt`)
+# the value `-o pipefail` (or `set -o pipefail`) is added to each shell command that make runs
+# otherwise in the example command pipe, only the exit code of `tee` is recorded instead of `go test` which can cause
+# test to pass in CI when they should not.
+SHELL = /bin/bash
+.SHELLFLAGS = -o pipefail -c
+
+SHELL_CASE_EXP = case "$$(uname -s)" in CYGWIN*|MINGW*|MSYS*) echo "true";; esac;
+UNIX_SHELL_ON_WINDOWS := $(shell $(SHELL_CASE_EXP))
+
+ifeq ($(UNIX_SHELL_ON_WINDOWS),true)
+	# The "sed" transformation below is needed on Windows, since commands like `go list -f '{{ .Dir }}'`
+	# return Windows paths and such paths are incompatible with other *nix tools, like `find`,
+	# used by the Makefile shell.
+	# The backslash needs to be doubled so its passed correctly to the shell.
+	NORMALIZE_DIRS = sed -e 's/^/\\//' -e 's/://' -e 's/\\\\/\\//g' | sort
+else
+	NORMALIZE_DIRS = sort
+endif
+
+# SRC_ROOT is the top of the source tree.
+SRC_ROOT := $(shell git rev-parse --show-toplevel)
+# SRC_PARENT_DIR is the absolute path of source tree's parent directory
+SRC_PARENT_DIR :=  $(shell dirname $(SRC_ROOT))
+
+# build tags required by any component should be defined as an independent variables and later added to GO_BUILD_TAGS below
+GO_BUILD_TAGS=""
+GOTEST_TIMEOUT?= 600s
+GOTEST_OPT?= -race -timeout $(GOTEST_TIMEOUT) -parallel 4 --tags=$(GO_BUILD_TAGS)
+GOTEST_INTEGRATION_OPT?= -race -timeout 360s -parallel 4
+GOTEST_OPT_WITH_COVERAGE = $(GOTEST_OPT) -coverprofile=coverage.txt -covermode=atomic
+GOTEST_OPT_WITH_INTEGRATION=$(GOTEST_INTEGRATION_OPT) -tags=integration,$(GO_BUILD_TAGS) -run=Integration
+GOTEST_OPT_WITH_INTEGRATION_COVERAGE=$(GOTEST_OPT_WITH_INTEGRATION) -coverprofile=integration-coverage.txt -covermode=atomic
+GOCMD?= go
+GOOS=$(shell $(GOCMD) env GOOS)
+GOARCH=$(shell $(GOCMD) env GOARCH)
+
+# In order to help reduce toil related to managing tooling for the open telemetry collector
+# this section of the makefile looks at only requiring command definitions to be defined
+# as part of $(TOOLS_MOD_DIR)/tools.go, following the existing practice.
+# Modifying the tools' `go.mod` file will trigger a rebuild of the tools to help
+# ensure that all contributors are using the most recent version to make builds repeatable everywhere.
+TOOLS_MOD_DIR    := $(SRC_ROOT)/internal/tools
+TOOLS_MOD_REGEX  := "\s+_\s+\".*\""
+TOOLS_PKG_NAMES  := $(shell grep -E $(TOOLS_MOD_REGEX) < $(TOOLS_MOD_DIR)/tools.go | tr -d " _\"")
+TOOLS_BIN_DIR    := $(SRC_ROOT)/.tools
+TOOLS_BIN_NAMES  := $(addprefix $(TOOLS_BIN_DIR)/, $(notdir $(TOOLS_PKG_NAMES)))
+CHLOGGEN_CONFIG  := .chloggen/config.yaml
+
+.PHONY: install-tools
+install-tools: $(TOOLS_BIN_NAMES)
+
+$(TOOLS_BIN_DIR):
+	mkdir -p $@
+
+$(TOOLS_BIN_NAMES): $(TOOLS_BIN_DIR) $(TOOLS_MOD_DIR)/go.mod
+	cd $(TOOLS_MOD_DIR) && $(GOCMD) build -o $@ -trimpath $(filter %/$(notdir $@),$(TOOLS_PKG_NAMES))
+
+ADDLICENSE          := $(TOOLS_BIN_DIR)/addlicense
+MDLINKCHECK         := $(TOOLS_BIN_DIR)/markdown-link-check
+MISSPELL            := $(TOOLS_BIN_DIR)/misspell -error
+MISSPELL_CORRECTION := $(TOOLS_BIN_DIR)/misspell -w
+LINT                := $(TOOLS_BIN_DIR)/golangci-lint
+MULTIMOD            := $(TOOLS_BIN_DIR)/multimod
+CHLOGGEN            := $(TOOLS_BIN_DIR)/chloggen
+GOIMPORTS           := $(TOOLS_BIN_DIR)/goimports
+PORTO               := $(TOOLS_BIN_DIR)/porto
+CHECKFILE           := $(TOOLS_BIN_DIR)/checkfile
+CROSSLINK           := $(TOOLS_BIN_DIR)/crosslink
+GOJUNIT             := $(TOOLS_BIN_DIR)/go-junit-report
+BUILDER             := $(TOOLS_BIN_DIR)/builder
+GOVULNCHECK         := $(TOOLS_BIN_DIR)/govulncheck
+GCI                 := $(TOOLS_BIN_DIR)/gci
+GOTESTSUM           := $(TOOLS_BIN_DIR)/gotestsum
+
+GOTESTSUM_OPT?= --rerun-fails=1
+
+# BUILD_TYPE should be one of (dev, release).
+BUILD_TYPE?=release
+
+ALL_PKG_DIRS := $(shell $(GOCMD) list -f '{{ .Dir }}' ./... | $(NORMALIZE_DIRS))
+
+ALL_SRC := $(shell find $(ALL_PKG_DIRS) -name '*.go' \
+                                -not -path '*/third_party/*' \
+                                -not -path '*/local/*' \
+                                -type f | sort)
+
+ALL_SRC_AND_SHELL := find . -type f  \( -iname '*.go' -o -iname "*.sh" \) ! -path '**/third_party/*' | sort
+
+# All source code and documents. Used in spell check.
+ALL_SRC_AND_DOC_CMD := find $(ALL_PKG_DIRS) -name "*.md" -o -name "*.go" -o -name "*.yaml" -not -path '*/third_party/*' -type f | sort
+ifeq ($(UNIX_SHELL_ON_WINDOWS),true)
+	# Windows has a low limit, 8192 chars, to create a process. Workaround it by breaking it in smaller commands.
+	MISSPELL_CMD := $(ALL_SRC_AND_DOC_CMD) | xargs -n 20 $(MISSPELL)
+	MISSPELL_CORRECTION_CMD := $(ALL_SRC_AND_DOC_CMD) | xargs -n 20 $(MISSPELL_CORRECTION)
+else
+	ALL_SRC_AND_DOC := $(shell $(ALL_SRC_AND_DOC_CMD))
+	MISSPELL_CMD := $(MISSPELL) $(ALL_SRC_AND_DOC)
+	MISSPELL_CORRECTION_CMD := $(MISSPELL_CORRECTION) $(ALL_SRC_AND_DOC)
+endif
+
+# ALL_PKGS is used with 'go cover'
+ALL_PKGS := $(shell $(GOCMD) list $(sort $(dir $(ALL_SRC))))
+
+ADDLICENSE_CMD := $(ADDLICENSE) -s=only -y "" -c "The OpenTelemetry Authors"
+
+pwd:
+	@pwd
+
+all-pkgs:
+	@echo $(ALL_PKGS) | tr ' ' '\n' | sort
+
+all-srcs:
+	@echo $(ALL_SRC) | tr ' ' '\n' | sort
+
+all-pkg-dirs:
+	@echo $(ALL_PKG_DIRS) | tr ' ' '\n' | sort
+
+.DEFAULT_GOAL := common
+
+.PHONY: common
+common: lint test
+
+.PHONY: test
+test: $(GOTESTSUM)
+	$(GOTESTSUM) $(GOTESTSUM_OPT) --packages="./..." -- $(GOTEST_OPT)
+
+.PHONY: test-with-cover
+test-with-cover: $(GOTESTSUM)
+	mkdir -p $(PWD)/coverage/unit
+	$(GOTESTSUM) $(GOTESTSUM_OPT) --packages="./..." -- $(GOTEST_OPT) -cover -covermode=atomic -args -test.gocoverdir="$(PWD)/coverage/unit"
+
+.PHONY: do-unit-tests-with-cover
+do-unit-tests-with-cover: $(GOTESTSUM)
+	@echo "running $(GOCMD) unit test ./... + coverage in `pwd`"
+	$(GOTESTSUM) $(GOTESTSUM_OPT) --packages="./..." --  $(GOTEST_OPT_WITH_COVERAGE)
+	$(GOCMD) tool cover -html=coverage.txt -o coverage.html
+
+.PHONY: mod-integration-test
+mod-integration-test: $(GOTESTSUM)
+	@echo "running $(GOCMD) integration test ./... in `pwd`"
+	$(GOTESTSUM) $(GOTESTSUM_OPT) --packages="./..." -- $(GOTEST_OPT_WITH_INTEGRATION)
+	@if [ -e integration-coverage.txt ]; then \
+  		$(GOCMD) tool cover -html=integration-coverage.txt -o integration-coverage.html; \
+  	fi
+
+.PHONY: do-integration-tests-with-cover
+do-integration-tests-with-cover: $(GOTESTSUM)
+	@echo "running $(GOCMD) integration test ./... + coverage in `pwd`"
+	$(GOTESTSUM) $(GOTESTSUM_OPT) --packages="./..." --  $(GOTEST_OPT_WITH_INTEGRATION_COVERAGE)
+	@if [ -e integration-coverage.txt ]; then \
+  		$(GOCMD) tool cover -html=integration-coverage.txt -o integration-coverage.html; \
+  	fi
+
+.PHONY: benchmark
+benchmark: $(GOTESTSUM)
+	$(GOTESTSUM) $(GOTESTSUM_OPT) --packages="$(ALL_PKGS)" -- -bench=. -run=notests --tags=$(GO_BUILD_TAGS)
+
+.PHONY: addlicense
+addlicense: $(ADDLICENSE)
+	@ADDLICENSEOUT=$$(for f in $$($(ALL_SRC_AND_SHELL)); do \
+		`$(ADDLICENSE_CMD) "$$f" 2>&1`; \
+	done); \
+	if [ "$$ADDLICENSEOUT" ]; then \
+		echo "$(ADDLICENSE) FAILED => add License errors:\n"; \
+		echo "$$ADDLICENSEOUT\n"; \
+		exit 1; \
+	else \
+		echo "Add License finished successfully"; \
+	fi
+
+.PHONY: checklicense
+checklicense: $(ADDLICENSE)
+	@licRes=$$(for f in $$($(ALL_SRC_AND_SHELL)); do \
+		awk '/Copyright The OpenTelemetry Authors|generated|GENERATED/ && NR<=3 { found=1; next } END { if (!found) print FILENAME }' $$f; \
+		awk '/SPDX-License-Identifier: Apache-2.0|generated|GENERATED/ && NR<=4 { found=1; next } END { if (!found) print FILENAME }' $$f; \
+		$(ADDLICENSE_CMD) -check "$$f" 2>&1 || echo "$$f"; \
+		done); \
+	if [ -n "$${licRes}" ]; then \
+		echo "license header checking failed:"; echo "$${licRes}"; \
+		exit 1; \
+	else \
+		echo "Check License finished successfully"; \
+	fi
+
+.PHONY: checklinks
+checklinks:
+	command -v $(MDLINKCHECK) >/dev/null 2>&1 || { echo >&2 "$(MDLINKCHECK) not installed. Run 'npm install -g markdown-link-check'"; exit 1; }
+	find . -name \*.md -print0 | xargs -0 -n1 \
+		$(MDLINKCHECK) -q -c $(SRC_ROOT)/.github/workflows/check_links_config.json || true
+
+.PHONY: fmt
+fmt: $(GOIMPORTS)
+	gofmt  -w -s ./
+	$(GOIMPORTS) -w  -local github.com/open-telemetry/opentelemetry-collector-contrib ./
+
+.PHONY: lint
+lint: $(LINT) checklicense misspell
+	$(LINT) run --allow-parallel-runners --verbose --build-tags integration --timeout=30m --path-prefix $(shell basename "$(CURDIR)")
+
+.PHONY: govulncheck
+govulncheck: $(GOVULNCHECK)
+	$(GOVULNCHECK) ./...
+
+.PHONY: tidy
+tidy:
+	rm -fr go.sum
+	$(GOCMD) mod tidy -compat=1.21.0
+
+.PHONY: misspell
+misspell: $(TOOLS_BIN_DIR)/misspell
+	@echo "running $(MISSPELL)"
+	@$(MISSPELL_CMD)
+
+.PHONY: misspell-correction
+misspell-correction: $(TOOLS_BIN_DIR)/misspell
+	$(MISSPELL_CORRECTION_CMD)
+
+.PHONY: moddownload
+moddownload:
+	$(GOCMD) mod download
+
+.PHONY: gci
+gci: $(TOOLS_BIN_DIR)/gci
+	@echo "running $(GCI)"
+	@$(GCI) write -s standard -s default -s "prefix(github.com/open-telemetry/opentelemetry-collector-contrib)" $(ALL_SRC_AND_DOC)
