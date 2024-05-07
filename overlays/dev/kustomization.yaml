@@ -44,6 +44,14 @@ helmCharts:
       - patches/patch-tempo.yaml
       - patches/patch-serviceaccount.yaml
 
+  - name: promtail
+    repo: "https://grafana.github.io/helm-charts"
+    version: "^6.15.5"
+    releaseName: promtail
+    namespace: monitoring
+    includeCRDs: true
+    valuesFile: ../../base/promtail.yaml
+
   - name: opentelemetry-operator
     repo: "https://open-telemetry.github.io/opentelemetry-helm-charts"
     version: "^0.56.0"
