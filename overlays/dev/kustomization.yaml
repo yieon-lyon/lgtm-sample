@@ -6,7 +6,7 @@ namespace: monitoring
 helmCharts:
   - name: grafana
     repo: "https://grafana.github.io/helm-charts"
-    version: "^7.3.9"
+    version: "^8.0.0"
     releaseName: grafana
     namespace: monitoring
     includeCRDs: true

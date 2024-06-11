@@ -2,21 +2,22 @@ mimir:
   structuredConfig:
     limits:
       max_label_names_per_series: 100
-      max_global_series_per_user: 1000000
+      max_global_series_per_user: 2000000
       ingestion_rate: 100000
-      ingestion_burst_size: 5000000
+      ingestion_burst_size: 300000
+      accept_ha_samples: true
+      ha_cluster_label: cluster
+      ha_replica_label: __replica__
+      compactor_blocks_retention_period: 1y
     blocks_storage:
       s3:
-        bucket_name: mimir-blocks-dev
+        bucket_name: soomgo-mimir-dev
         endpoint: s3.ap-northeast-2.amazonaws.com
         region: ap-northeast-2
-#    alertmanager_storage:
-#      s3:
-#        bucket_name: mimir-alertmanager-dev
-#        endpoint: s3.ap-northeast-2.amazonaws.com
-#        region: ap-northeast-2
-#    ruler_storage:
-#      s3:
-#        bucket_name: mimir-ruler-dev
-#        endpoint: s3.ap-northeast-2.amazonaws.com
-#        region: ap-northeast-2
+    distributor:
+      ha_tracker:
+        enable_ha_tracker: true
+        kvstore:
+          store: consul
+          consul:
+            host: http://consul-server.consul.svc.cluster.local:8500
